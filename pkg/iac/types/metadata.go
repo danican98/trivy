@@ -84,7 +84,6 @@ func (m *Metadata) ToRego() any {
 		"sourceprefix": m.Range().GetSourcePrefix(),
 		"managed":      m.isManaged,
 		"explicit":     m.isExplicit,
-		"unresolvable": m.isUnresolvable,
 		"fskey":        CreateFSKey(m.Range().GetFS()),
 		"resource":     m.Reference(),
 	}

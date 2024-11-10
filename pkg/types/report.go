@@ -130,12 +130,13 @@ func (r *Result) IsEmpty() bool {
 }
 
 type MisconfSummary struct {
-	Successes int
-	Failures  int
+	Successes  int
+	Failures   int
+	Exceptions int
 }
 
 func (s MisconfSummary) Empty() bool {
-	return s.Successes == 0 && s.Failures == 0
+	return s.Successes == 0 && s.Failures == 0 && s.Exceptions == 0
 }
 
 // Failed returns whether the result includes any vulnerabilities, misconfigurations or secrets

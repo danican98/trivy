@@ -18,18 +18,20 @@ func adaptAccounts(deployment azure.Deployment) []storage.Account {
 	var accounts []storage.Account
 	for _, resource := range deployment.GetResourcesByType("Microsoft.Storage/storageAccounts") {
 
-		acl := resource.Properties.GetMapValue("networkAcls")
+		var networkRules []storage.NetworkRule
+		for _, acl := range resource.Properties.GetMapValue("networkAcls").AsList() {
 
-		var bypasses []types.StringValue
-		bypassProp := acl.GetMapValue("bypass")
-		for _, bypass := range strings.Split(bypassProp.AsString(), ",") {
-			bypasses = append(bypasses, types.String(strings.TrimSpace(bypass), bypassProp.GetMetadata()))
-		}
+			var bypasses []types.StringValue
+			bypassProp := acl.GetMapValue("bypass")
+			for _, bypass := range strings.Split(bypassProp.AsString(), ",") {
+				bypasses = append(bypasses, types.String(bypass, bypassProp.GetMetadata()))
+			}
 
-		networkRule := storage.NetworkRule{
-			Metadata:       acl.GetMetadata(),
-			Bypass:         bypasses,
-			AllowByDefault: types.Bool(acl.GetMapValue("defaultAction").EqualTo("Allow"), acl.GetMetadata()),
+			networkRules = append(networkRules, storage.NetworkRule{
+				Metadata:       acl.GetMetadata(),
+				Bypass:         bypasses,
+				AllowByDefault: types.Bool(acl.GetMapValue("defaultAction").EqualTo("Allow"), acl.GetMetadata()),
+			})
 		}
 
 		var queues []storage.Queue
@@ -50,7 +52,7 @@ func adaptAccounts(deployment azure.Deployment) []storage.Account {
 
 		account := storage.Account{
 			Metadata:     resource.Metadata,
-			NetworkRules: []storage.NetworkRule{networkRule},
+			NetworkRules: networkRules,
 			EnforceHTTPS: resource.Properties.GetMapValue("supportsHttpsTrafficOnly").AsBoolValue(false, resource.Properties.GetMetadata()),
 			Containers:   containers,
 			QueueProperties: storage.QueueProperties{
@@ -60,12 +62,6 @@ func adaptAccounts(deployment azure.Deployment) []storage.Account {
 			MinimumTLSVersion: resource.Properties.GetMapValue("minimumTlsVersion").AsStringValue("", resource.Properties.GetMetadata()),
 			Queues:            queues,
 		}
-
-		publicNetworkAccess := resource.Properties.GetMapValue("publicNetworkAccess")
-		account.PublicNetworkAccess = types.Bool(
-			publicNetworkAccess.AsStringValue("Enabled", publicNetworkAccess.Metadata).EqualTo("Enabled"),
-			publicNetworkAccess.Metadata,
-		)
 		accounts = append(accounts, account)
 	}
 	return accounts

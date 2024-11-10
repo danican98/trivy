@@ -36,8 +36,9 @@ func TestBuildComplianceReport(t *testing.T) {
 							Class:  types.ClassConfig,
 							Type:   ftypes.Kubernetes,
 							MisconfSummary: &types.MisconfSummary{
-								Successes: 1,
-								Failures:  0,
+								Successes:  1,
+								Failures:   0,
+								Exceptions: 0,
 							},
 							Misconfigurations: []types.DetectedMisconfiguration{
 								{
@@ -157,8 +158,9 @@ func TestBuildComplianceReport(t *testing.T) {
 								Class:  types.ClassConfig,
 								Type:   ftypes.Kubernetes,
 								MisconfSummary: &types.MisconfSummary{
-									Successes: 1,
-									Failures:  0,
+									Successes:  1,
+									Failures:   0,
+									Exceptions: 0,
 								},
 								Misconfigurations: []types.DetectedMisconfiguration{
 									{

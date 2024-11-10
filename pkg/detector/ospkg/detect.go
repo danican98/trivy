@@ -48,6 +48,7 @@ var (
 		ftypes.Photon:             photon.NewScanner(),
 		ftypes.Wolfi:              wolfi.NewScanner(),
 		ftypes.Chainguard:         chainguard.NewScanner(),
+		ftypes.RedOS:		   rocky.NewScanner(),
 	}
 )
 

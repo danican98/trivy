@@ -1,7 +1,6 @@
 package mod
 
 import (
-	"fmt"
 	"io"
 	"regexp"
 	"strconv"
@@ -91,11 +90,9 @@ func (p *Parser) Parse(r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependenc
 	if p.useMinVersion {
 		if toolchainVer := toolchainVersion(modFileParsed.Toolchain, modFileParsed.Go); toolchainVer != "" {
 			pkgs["stdlib"] = ftypes.Package{
-				ID:   packageID("stdlib", toolchainVer),
-				Name: "stdlib",
-				// Our versioning library doesn't support canonical (goX.Y.Z) format,
-				// So we need to add `v` prefix for consistency (with module and dependency versions).
-				Version:      fmt.Sprintf("v%s", toolchainVer),
+				ID:           packageID("stdlib", toolchainVer),
+				Name:         "stdlib",
+				Version:      toolchainVer,
 				Relationship: ftypes.RelationshipDirect, // Considered a direct dependency as the main module depends on the standard packages.
 			}
 		}
@@ -103,10 +100,11 @@ func (p *Parser) Parse(r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependenc
 
 	// Main module
 	if m := modFileParsed.Module; m != nil {
+		ver := strings.TrimPrefix(m.Mod.Version, "v")
 		pkgs[m.Mod.Path] = ftypes.Package{
-			ID:                 packageID(m.Mod.Path, m.Mod.Version),
+			ID:                 packageID(m.Mod.Path, ver),
 			Name:               m.Mod.Path,
-			Version:            m.Mod.Version,
+			Version:            ver,
 			ExternalReferences: p.GetExternalRefs(m.Mod.Path),
 			Relationship:       ftypes.RelationshipRoot,
 		}
@@ -118,10 +116,11 @@ func (p *Parser) Parse(r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependenc
 		if skipIndirect && require.Indirect {
 			continue
 		}
+		ver := strings.TrimPrefix(require.Mod.Version, "v")
 		pkgs[require.Mod.Path] = ftypes.Package{
-			ID:                 packageID(require.Mod.Path, require.Mod.Version),
+			ID:                 packageID(require.Mod.Path, ver),
 			Name:               require.Mod.Path,
-			Version:            require.Mod.Version,
+			Version:            ver,
 			Relationship:       lo.Ternary(require.Indirect, ftypes.RelationshipIndirect, ftypes.RelationshipDirect),
 			ExternalReferences: p.GetExternalRefs(require.Mod.Path),
 		}
@@ -137,7 +136,7 @@ func (p *Parser) Parse(r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependenc
 			}
 
 			// If the replace directive has a version on the left side, make sure it matches the version that was imported.
-			if rep.Old.Version != "" && old.Version != rep.Old.Version {
+			if rep.Old.Version != "" && old.Version != rep.Old.Version[1:] {
 				continue
 			}
 
@@ -154,9 +153,9 @@ func (p *Parser) Parse(r xio.ReadSeekerAt) ([]ftypes.Package, []ftypes.Dependenc
 
 			// Add replaced package to package register.
 			pkgs[rep.New.Path] = ftypes.Package{
-				ID:                 packageID(rep.New.Path, rep.New.Version),
+				ID:                 packageID(rep.New.Path, rep.New.Version[1:]),
 				Name:               rep.New.Path,
-				Version:            rep.New.Version,
+				Version:            rep.New.Version[1:],
 				Relationship:       old.Relationship,
 				ExternalReferences: p.GetExternalRefs(rep.New.Path),
 			}

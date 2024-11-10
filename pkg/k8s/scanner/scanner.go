@@ -82,18 +82,14 @@ func (s *Scanner) Scan(ctx context.Context, artifactsData []*artifacts.Artifact)
 
 	var resources []report.Resource
 
-	// scans kubernetes artifacts as a scope of yaml files
-	if local.ShouldScanMisconfigOrRbac(s.opts.Scanners) {
-		misconfigs, err := s.scanMisconfigs(ctx, resourceArtifacts)
-		if err != nil {
-			return report.Report{}, xerrors.Errorf("scanning misconfigurations error: %w", err)
-		}
-		resources = append(resources, misconfigs...)
+	type scanResult struct {
+		vulns     []report.Resource
+		misconfig report.Resource
 	}
 
-	// scan images from kubernetes cluster in parallel
-	if s.opts.Scanners.AnyEnabled(types.VulnerabilityScanner, types.SecretScanner) && !s.opts.SkipImages {
-		onItem := func(ctx context.Context, artifact *artifacts.Artifact) ([]report.Resource, error) {
+	onItem := func(ctx context.Context, artifact *artifacts.Artifact) (scanResult, error) {
+		scanResults := scanResult{}
+		if s.opts.Scanners.AnyEnabled(types.VulnerabilityScanner, types.SecretScanner) && !s.opts.SkipImages {
 			opts := s.opts
 			opts.Credentials = make([]ftypes.Credential, len(s.opts.Credentials))
 			copy(opts.Credentials, s.opts.Credentials)
@@ -110,22 +106,33 @@ func (s *Scanner) Scan(ctx context.Context, artifactsData []*artifacts.Artifact)
 			}
 			vulns, err := s.scanVulns(ctx, artifact, opts)
 			if err != nil {
-				return nil, xerrors.Errorf("scanning vulnerabilities error: %w", err)
+				return scanResult{}, xerrors.Errorf("scanning vulnerabilities error: %w", err)
 			}
-			return vulns, nil
+			scanResults.vulns = vulns
 		}
-
-		onResult := func(result []report.Resource) error {
-			resources = append(resources, result...)
-			return nil
+		if local.ShouldScanMisconfigOrRbac(s.opts.Scanners) {
+			misconfig, err := s.scanMisconfigs(ctx, artifact)
+			if err != nil {
+				return scanResult{}, xerrors.Errorf("scanning misconfigurations error: %w", err)
+			}
+			scanResults.misconfig = misconfig
 		}
-
-		p := parallel.NewPipeline(s.opts.Parallel, !s.opts.Quiet, resourceArtifacts, onItem, onResult)
-		if err := p.Do(ctx); err != nil {
-			return report.Report{}, err
-		}
+		return scanResults, nil
 	}
 
+	onResult := func(result scanResult) error {
+		resources = append(resources, result.vulns...)
+		// don't add empty misconfig results to resources slice to avoid an empty resource
+		if result.misconfig.Results != nil {
+			resources = append(resources, result.misconfig)
+		}
+		return nil
+	}
+
+	p := parallel.NewPipeline(s.opts.Parallel, !s.opts.Quiet, resourceArtifacts, onItem, onResult)
+	if err := p.Do(ctx); err != nil {
+		return report.Report{}, err
+	}
 	if s.opts.Scanners.AnyEnabled(types.VulnerabilityScanner) {
 		k8sResource, err := s.scanK8sVulns(ctx, k8sCoreArtifacts)
 		if err != nil {
@@ -166,43 +173,22 @@ func (s *Scanner) scanVulns(ctx context.Context, artifact *artifacts.Artifact, o
 	return resources, nil
 }
 
-func (s *Scanner) scanMisconfigs(ctx context.Context, k8sArtifacts []*artifacts.Artifact) ([]report.Resource, error) {
-	dir, artifactsByFilename, err := generateTempDir(k8sArtifacts)
+func (s *Scanner) scanMisconfigs(ctx context.Context, artifact *artifacts.Artifact) (report.Resource, error) {
+	configFile, err := createTempFile(artifact)
 	if err != nil {
-		return nil, xerrors.Errorf("failed to generate temp dir: %w", err)
+		return report.Resource{}, xerrors.Errorf("scan error: %w", err)
 	}
 
-	s.opts.Target = dir
+	s.opts.Target = configFile
 
 	configReport, err := s.runner.ScanFilesystem(ctx, s.opts)
-	// remove config files after scanning
-	removeDir(dir)
-
+	// remove config file after scanning
+	removeFile(configFile)
 	if err != nil {
-		return nil, xerrors.Errorf("failed to scan filesystem: %w", err)
-	}
-	resources := make([]report.Resource, 0, len(k8sArtifacts))
-
-	for _, res := range configReport.Results {
-		artifact := artifactsByFilename[res.Target]
-
-		singleReport := types.Report{
-			SchemaVersion: configReport.SchemaVersion,
-			CreatedAt:     configReport.CreatedAt,
-			ArtifactName:  res.Target,
-			ArtifactType:  configReport.ArtifactType,
-			Metadata:      configReport.Metadata,
-			Results:       types.Results{res},
-		}
-
-		resource, err := s.filter(ctx, singleReport, artifact)
-		if err != nil {
-			resource = report.CreateResource(artifact, singleReport, err)
-		}
-		resources = append(resources, resource)
+		return report.CreateResource(artifact, configReport, err), err
 	}
 
-	return resources, nil
+	return s.filter(ctx, configReport, artifact)
 }
 func (s *Scanner) filter(ctx context.Context, r types.Report, artifact *artifacts.Artifact) (report.Resource, error) {
 	var err error

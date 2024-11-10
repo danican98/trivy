@@ -567,7 +567,7 @@ resource "something" "else" {
 		for_each = toset(["true"])
 
 		content {
-			ok = blah.value
+			ok = each.value
 		}
 	}
 }

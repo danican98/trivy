@@ -1,14 +1,12 @@
 package terraform
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -139,15 +137,16 @@ func (b *Block) GetRawValue() any {
 	return nil
 }
 
-func (b *Block) injectBlock(block *Block) {
+func (b *Block) InjectBlock(block *Block, name string) {
+	block.hclBlock.Labels = []string{}
+	block.hclBlock.Type = name
 	for attrName, attr := range block.Attributes() {
-		path := fmt.Sprintf("%s.%s.%s", b.reference.String(), block.hclBlock.Type, attrName)
-		b.context.Root().SetByDot(attr.Value(), path)
+		b.context.Root().SetByDot(attr.Value(), fmt.Sprintf("%s.%s.%s", b.reference.String(), name, attrName))
 	}
 	b.childBlocks = append(b.childBlocks, block)
 }
 
-func (b *Block) markExpanded() {
+func (b *Block) MarkExpanded() {
 	b.expanded = true
 }
 
@@ -155,26 +154,17 @@ func (b *Block) IsExpanded() bool {
 	return b.expanded
 }
 
-func (b *Block) inherit(ctx *context.Context, index ...cty.Value) *Block {
-	return NewBlock(b.copyBlock(), ctx, b.moduleBlock, b.parentBlock, b.moduleSource, b.moduleFS, index...)
-}
-
-func (b *Block) copyBlock() *hcl.Block {
-	hclBlock := *b.hclBlock
-	return &hclBlock
-}
-
-func (b *Block) childContext() *context.Context {
-	if b.context == nil {
-		return context.NewContext(&hcl.EvalContext{}, nil)
-	}
-	return b.context.NewChild()
-}
-
 func (b *Block) Clone(index cty.Value) *Block {
-	childCtx := b.childContext()
-	clone := b.inherit(childCtx, index)
+	var childCtx *context.Context
+	if b.context != nil {
+		childCtx = b.context.NewChild()
+	} else {
+		childCtx = context.NewContext(&hcl.EvalContext{}, nil)
+	}
 
+	cloneHCL := *b.hclBlock
+
+	clone := NewBlock(&cloneHCL, childCtx, b.moduleBlock, b.parentBlock, b.moduleSource, b.moduleFS, index)
 	if len(clone.hclBlock.Labels) > 0 {
 		position := len(clone.hclBlock.Labels) - 1
 		labels := make([]string, len(clone.hclBlock.Labels))
@@ -198,7 +188,7 @@ func (b *Block) Clone(index cty.Value) *Block {
 	}
 	indexVal, _ := gocty.ToCtyValue(index, cty.Number)
 	clone.context.SetByDot(indexVal, "count.index")
-	clone.markExpanded()
+	clone.MarkExpanded()
 	b.cloneIndex++
 	return clone
 }
@@ -456,17 +446,6 @@ func (b *Block) LocalName() string {
 	return b.reference.String()
 }
 
-func (b *Block) FullLocalName() string {
-	if b.parentBlock != nil {
-		return fmt.Sprintf(
-			"%s.%s",
-			b.parentBlock.FullLocalName(),
-			b.LocalName(),
-		)
-	}
-	return b.LocalName()
-}
-
 func (b *Block) FullName() string {
 
 	if b.moduleBlock != nil {
@@ -596,119 +575,4 @@ func (b *Block) IsNil() bool {
 
 func (b *Block) IsNotNil() bool {
 	return !b.IsNil()
-}
-
-func (b *Block) ExpandBlock() error {
-	var (
-		expanded []*Block
-		errs     error
-	)
-
-	for _, child := range b.childBlocks {
-		if child.Type() == "dynamic" {
-			blocks, err := child.expandDynamic()
-			if err != nil {
-				errs = multierror.Append(errs, err)
-				continue
-			}
-			expanded = append(expanded, blocks...)
-		}
-	}
-
-	for _, block := range expanded {
-		b.injectBlock(block)
-	}
-
-	return errs
-}
-
-func (b *Block) expandDynamic() ([]*Block, error) {
-	if b.IsExpanded() || b.Type() != "dynamic" {
-		return nil, nil
-	}
-
-	realBlockType := b.TypeLabel()
-	if realBlockType == "" {
-		return nil, errors.New("dynamic block must have 1 label")
-	}
-
-	forEachVal, err := b.validateForEach()
-	if err != nil {
-		return nil, fmt.Errorf("invalid for-each in %s block: %w", b.FullLocalName(), err)
-	}
-
-	var (
-		expanded []*Block
-		errs     error
-	)
-
-	forEachVal.ForEachElement(func(key, val cty.Value) (stop bool) {
-		if val.IsNull() {
-			return
-		}
-
-		iteratorName, err := b.iteratorName(realBlockType)
-		if err != nil {
-			errs = multierror.Append(errs, err)
-			return
-		}
-
-		forEachCtx := b.childContext()
-		obj := cty.ObjectVal(map[string]cty.Value{
-			"key":   key,
-			"value": val,
-		})
-		forEachCtx.Set(obj, iteratorName)
-
-		if content := b.GetBlock("content"); content != nil {
-			inherited := content.inherit(forEachCtx)
-			inherited.hclBlock.Labels = []string{}
-			inherited.hclBlock.Type = realBlockType
-			if err := inherited.ExpandBlock(); err != nil {
-				errs = multierror.Append(errs, err)
-				return
-			}
-			expanded = append(expanded, inherited)
-		}
-		return
-	})
-
-	if len(expanded) > 0 {
-		b.markExpanded()
-	}
-
-	return expanded, errs
-}
-
-func (b *Block) validateForEach() (cty.Value, error) {
-	forEachAttr := b.GetAttribute("for_each")
-	if forEachAttr == nil {
-		return cty.NilVal, errors.New("for_each attribute required")
-	}
-
-	forEachVal := forEachAttr.Value()
-
-	if !forEachVal.CanIterateElements() {
-		return cty.NilVal, fmt.Errorf("cannot use a %s value in for_each. An iterable collection is required", forEachVal.GoString())
-	}
-
-	return forEachVal, nil
-}
-
-func (b *Block) iteratorName(blockType string) (string, error) {
-	iteratorAttr := b.GetAttribute("iterator")
-	if iteratorAttr == nil {
-		return blockType, nil
-	}
-
-	traversal, diags := hcl.AbsTraversalForExpr(iteratorAttr.hclAttribute.Expr)
-	if diags.HasErrors() {
-		return "", diags
-	}
-
-	if len(traversal) != 1 {
-		return "", fmt.Errorf("dynamic iterator must be a single variable name")
-	}
-
-	return traversal.RootName(), nil
 }

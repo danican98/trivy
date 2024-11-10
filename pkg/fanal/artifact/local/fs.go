@@ -82,7 +82,6 @@ func (a Artifact) Inspect(ctx context.Context) (artifact.Reference, error) {
 	if err != nil {
 		return artifact.Reference{}, xerrors.Errorf("failed to prepare filesystem for post analysis: %w", err)
 	}
-	defer composite.Cleanup()
 
 	err = a.walker.Walk(a.rootPath, a.artifactOption.WalkerOption, func(filePath string, info os.FileInfo, opener analyzer.Opener) error {
 		dir := a.rootPath

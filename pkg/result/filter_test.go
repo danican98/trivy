@@ -21,16 +21,16 @@ import (
 func TestFilter(t *testing.T) {
 	var (
 		pkg1 = ftypes.Package{
-			ID:      "foo@v1.2.3",
+			ID:      "foo@1.2.3",
 			Name:    "foo",
-			Version: "v1.2.3",
+			Version: "1.2.3",
 			Identifier: ftypes.PkgIdentifier{
 				UID: "01",
 				PURL: &packageurl.PackageURL{
 					Type:      packageurl.TypeGolang,
 					Namespace: "github.com/aquasecurity",
 					Name:      "foo",
-					Version:   "v1.2.3",
+					Version:   "1.2.3",
 				},
 			},
 		}
@@ -90,14 +90,14 @@ func TestFilter(t *testing.T) {
 		vuln6 = types.DetectedVulnerability{
 			VulnerabilityID:  "CVE-2019-0006",
 			PkgName:          "foo",
-			InstalledVersion: "v1.2.3",
+			InstalledVersion: "1.2.3",
 			FixedVersion:     "1.2.4",
 			PkgIdentifier: ftypes.PkgIdentifier{
 				PURL: &packageurl.PackageURL{
 					Type:      packageurl.TypeGolang,
 					Namespace: "github.com/aquasecurity",
 					Name:      "foo",
-					Version:   "v1.2.3",
+					Version:   "1.2.3",
 				},
 			},
 			Vulnerability: dbTypes.Vulnerability{
@@ -107,14 +107,14 @@ func TestFilter(t *testing.T) {
 		vuln7 = types.DetectedVulnerability{
 			VulnerabilityID:  "CVE-2019-0007",
 			PkgName:          "bar",
-			InstalledVersion: "v2.3.4",
+			InstalledVersion: "2.3.4",
 			FixedVersion:     "2.3.5",
 			PkgIdentifier: ftypes.PkgIdentifier{
 				PURL: &packageurl.PackageURL{
 					Type:      packageurl.TypeGolang,
 					Namespace: "github.com/aquasecurity",
 					Name:      "bar",
-					Version:   "v2.3.4",
+					Version:   "2.3.4",
 				},
 			},
 			Vulnerability: dbTypes.Vulnerability{
@@ -233,8 +233,9 @@ func TestFilter(t *testing.T) {
 							vuln2,
 						},
 						MisconfSummary: &types.MisconfSummary{
-							Successes: 0,
-							Failures:  1,
+							Successes:  0,
+							Failures:   1,
+							Exceptions: 0,
 						},
 						Misconfigurations: []types.DetectedMisconfiguration{
 							misconf1,
@@ -402,8 +403,9 @@ func TestFilter(t *testing.T) {
 						Target: "deployment.yaml",
 						Class:  types.ClassConfig,
 						MisconfSummary: &types.MisconfSummary{
-							Successes: 1,
-							Failures:  1,
+							Successes:  1,
+							Failures:   1,
+							Exceptions: 1,
 						},
 						Misconfigurations: []types.DetectedMisconfiguration{
 							misconf1,
@@ -520,8 +522,9 @@ func TestFilter(t *testing.T) {
 					{
 						Target: "app/Dockerfile",
 						MisconfSummary: &types.MisconfSummary{
-							Successes: 0,
-							Failures:  1,
+							Successes:  0,
+							Failures:   1,
+							Exceptions: 2,
 						},
 						Misconfigurations: []types.DetectedMisconfiguration{
 							misconf3,
@@ -638,8 +641,9 @@ func TestFilter(t *testing.T) {
 				Results: types.Results{
 					{
 						MisconfSummary: &types.MisconfSummary{
-							Successes: 1,
-							Failures:  1,
+							Successes:  1,
+							Failures:   1,
+							Exceptions: 1,
 						},
 						Misconfigurations: []types.DetectedMisconfiguration{
 							misconf1,

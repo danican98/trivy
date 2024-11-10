@@ -260,17 +260,36 @@ func (e *evaluator) evaluateSteps() {
 }
 
 func (e *evaluator) expandBlocks(blocks terraform.Blocks) terraform.Blocks {
-	return e.expandDynamicBlocks(e.expandBlockForEaches(e.expandBlockCounts(blocks))...)
+	return e.expandDynamicBlocks(e.expandBlockForEaches(e.expandBlockCounts(blocks), false)...)
 }
 
 func (e *evaluator) expandDynamicBlocks(blocks ...*terraform.Block) terraform.Blocks {
 	for _, b := range blocks {
-		if err := b.ExpandBlock(); err != nil {
-			e.logger.Error(`Failed to expand dynamic block.`,
-				log.String("block", b.FullName()), log.Err(err))
-		}
+		e.expandDynamicBlock(b)
 	}
 	return blocks
+}
+
+func (e *evaluator) expandDynamicBlock(b *terraform.Block) {
+	for _, sub := range b.AllBlocks() {
+		e.expandDynamicBlock(sub)
+	}
+	for _, sub := range b.AllBlocks().OfType("dynamic") {
+		if sub.IsExpanded() {
+			continue
+		}
+		blockName := sub.TypeLabel()
+		expanded := e.expandBlockForEaches(terraform.Blocks{sub}, true)
+		for _, ex := range expanded {
+			if content := ex.GetBlock("content"); content.IsNotNil() {
+				_ = e.expandDynamicBlocks(content)
+				b.InjectBlock(content, blockName)
+			}
+		}
+		if len(expanded) > 0 {
+			sub.MarkExpanded()
+		}
+	}
 }
 
 func isBlockSupportsForEachMetaArgument(block *terraform.Block) bool {
@@ -278,10 +297,11 @@ func isBlockSupportsForEachMetaArgument(block *terraform.Block) bool {
 		"module",
 		"resource",
 		"data",
+		"dynamic",
 	}, block.Type())
 }
 
-func (e *evaluator) expandBlockForEaches(blocks terraform.Blocks) terraform.Blocks {
+func (e *evaluator) expandBlockForEaches(blocks terraform.Blocks, isDynamic bool) terraform.Blocks {
 
 	var forEachFiltered terraform.Blocks
 
@@ -328,7 +348,7 @@ func (e *evaluator) expandBlockForEaches(blocks terraform.Blocks) terraform.Bloc
 			// is the value of the collection. The exception is the use of for-each inside a dynamic block,
 			// because in this case the collection element may not be a primitive value.
 			if (forEachVal.Type().IsCollectionType() || forEachVal.Type().IsTupleType()) &&
-				!forEachVal.Type().IsMapType() {
+				!forEachVal.Type().IsMapType() && !isDynamic {
 				stringVal, err := convert.Convert(val, cty.String)
 				if err != nil {
 					e.logger.Error(
@@ -354,7 +374,22 @@ func (e *evaluator) expandBlockForEaches(blocks terraform.Blocks) terraform.Bloc
 
 			ctx.Set(eachObj, "each")
 			ctx.Set(eachObj, block.TypeLabel())
+
+			if isDynamic {
+				if iterAttr := block.GetAttribute("iterator"); iterAttr.IsNotNil() {
+					refs := iterAttr.AllReferences()
+					if len(refs) == 1 {
+						ctx.Set(idx, refs[0].TypeLabel(), "key")
+						ctx.Set(val, refs[0].TypeLabel(), "value")
+					} else {
+						e.logger.Debug("Ignoring iterator attribute in dynamic block, expected one reference",
+							log.Int("refs", len(refs)))
+					}
+				}
+			}
+
 			forEachFiltered = append(forEachFiltered, clone)
+
 			clones[idx.AsString()] = clone.Values()
 		})
 

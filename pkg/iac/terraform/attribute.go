@@ -729,16 +729,15 @@ func (a *Attribute) IsTrue() bool {
 	if a == nil {
 		return false
 	}
-	val := a.Value()
-	switch val.Type() {
+	switch a.Value().Type() {
 	case cty.Bool:
-		return val.True()
+		return a.Value().True()
 	case cty.String:
-		val := val.AsString()
+		val := a.Value().AsString()
 		val = strings.Trim(val, "\"")
 		return strings.EqualFold(val, "true")
 	case cty.Number:
-		val := val.AsBigFloat()
+		val := a.Value().AsBigFloat()
 		f, _ := val.Float64()
 		return f > 0
 	}

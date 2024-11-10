@@ -50,12 +50,6 @@ var enablediacTypes = map[detection.FileType]types.ConfigType{
 	detection.FileTypeYAML:                  types.YAML,
 }
 
-type DisabledCheck struct {
-	ID      string
-	Scanner string // For logging
-	Reason  string // For logging
-}
-
 type ScannerOption struct {
 	Trace                    bool
 	RegoOnly                 bool
@@ -80,9 +74,9 @@ type ScannerOption struct {
 	FilePatterns      []string
 	ConfigFileSchemas []*ConfigFileSchema
 
-	DisabledChecks []DisabledCheck
-	SkipFiles      []string
-	SkipDirs       []string
+	DisabledCheckIDs []string
+	SkipFiles        []string
+	SkipDirs         []string
 }
 
 func (o *ScannerOption) Sort() {
@@ -139,7 +133,6 @@ func NewScanner(t detection.FileType, opt ScannerOption) (*Scanner, error) {
 }
 
 func (s *Scanner) Scan(ctx context.Context, fsys fs.FS) ([]types.Misconfiguration, error) {
-	ctx = log.WithContextPrefix(ctx, log.PrefixMisconfiguration)
 	newfs, err := s.filterFS(fsys)
 	if err != nil {
 		return nil, xerrors.Errorf("fs filter error: %w", err)
@@ -148,12 +141,12 @@ func (s *Scanner) Scan(ctx context.Context, fsys fs.FS) ([]types.Misconfiguratio
 		return nil, nil
 	}
 
-	log.DebugContext(ctx, "Scanning files for misconfigurations...", log.String("scanner", s.scanner.Name()))
+	log.Debug("Scanning files for misconfigurations...", log.String("scanner", s.scanner.Name()))
 	results, err := s.scanner.ScanFS(ctx, newfs, ".")
 	if err != nil {
 		var invalidContentError *cfparser.InvalidContentError
 		if errors.As(err, &invalidContentError) {
-			log.ErrorContext(ctx, "scan was broken with InvalidContentError", s.scanner.Name(), log.Err(err))
+			log.Error("scan was broken with InvalidContentError", s.scanner.Name(), log.Err(err))
 			return nil, nil
 		}
 		return nil, xerrors.Errorf("scan config error: %w", err)
@@ -218,17 +211,11 @@ func (s *Scanner) filterFS(fsys fs.FS) (fs.FS, error) {
 }
 
 func scannerOptions(t detection.FileType, opt ScannerOption) ([]options.ScannerOption, error) {
-	disabledCheckIDs := lo.Map(opt.DisabledChecks, func(check DisabledCheck, _ int) string {
-		log.Info("Check disabled", log.Prefix(log.PrefixMisconfiguration), log.String("ID", check.ID),
-			log.String("scanner", check.Scanner), log.String("reason", check.Reason))
-		return check.ID
-	})
-
 	opts := []options.ScannerOption{
 		rego.WithEmbeddedPolicies(!opt.DisableEmbeddedPolicies),
 		rego.WithEmbeddedLibraries(!opt.DisableEmbeddedLibraries),
 		options.ScannerWithIncludeDeprecatedChecks(opt.IncludeDeprecatedChecks),
-		rego.WithDisabledCheckIDs(disabledCheckIDs...),
+		rego.WithDisabledCheckIDs(opt.DisabledCheckIDs...),
 	}
 
 	policyFS, policyPaths, err := CreatePolicyFS(opt.PolicyPaths)
@@ -488,6 +475,8 @@ func ResultsToMisconf(configType types.ConfigType, scannerName string, results s
 			switch flattened.Status {
 			case scan.StatusPassed:
 				misconf.Successes = append(misconf.Successes, misconfResult)
+			case scan.StatusIgnored:
+				misconf.Exceptions = append(misconf.Exceptions, misconfResult)
 			case scan.StatusFailed:
 				misconf.Failures = append(misconf.Failures, misconfResult)
 			}

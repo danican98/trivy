@@ -20,7 +20,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			Name:         "stdlib",
-			Version:      "v1.15.2",
+			Version:      "1.15.2",
 			Relationship: ftypes.RelationshipDirect,
 		},
 		{
@@ -69,7 +69,7 @@ func TestParse(t *testing.T) {
 				},
 				{
 					Name:         "stdlib",
-					Version:      "v1.16.4",
+					Version:      "1.16.4",
 					Relationship: ftypes.RelationshipDirect,
 				},
 				{
@@ -93,7 +93,7 @@ func TestParse(t *testing.T) {
 				},
 				{
 					Name:         "stdlib",
-					Version:      "v1.20.6",
+					Version:      "1.20.6",
 					Relationship: ftypes.RelationshipDirect,
 				},
 			},
@@ -109,7 +109,7 @@ func TestParse(t *testing.T) {
 				},
 				{
 					Name:         "stdlib",
-					Version:      "v1.22.1",
+					Version:      "1.22.1",
 					Relationship: ftypes.RelationshipDirect,
 				},
 			},
@@ -120,7 +120,7 @@ func TestParse(t *testing.T) {
 			want: []ftypes.Package{
 				{
 					Name:         "stdlib",
-					Version:      "v1.22.1",
+					Version:      "1.22.1",
 					Relationship: ftypes.RelationshipDirect,
 				},
 			},

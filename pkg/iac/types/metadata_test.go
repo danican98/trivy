@@ -8,14 +8,12 @@ import (
 
 func Test_MetadataToRego(t *testing.T) {
 	m1 := NewTestMetadata()
-	m1.isUnresolvable = true
 	expected := map[string]any{
 		"endline":      123,
 		"explicit":     false,
 		"filepath":     "test.test",
 		"fskey":        "",
 		"managed":      true,
-		"unresolvable": true,
 		"resource":     "",
 		"sourceprefix": "",
 		"startline":    123,
@@ -29,7 +27,6 @@ func Test_MetadataToRego(t *testing.T) {
 		"filepath":     "test.test",
 		"fskey":        "",
 		"managed":      true,
-		"unresolvable": false,
 		"resource":     "",
 		"sourceprefix": "",
 		"startline":    123,

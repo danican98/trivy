@@ -1,7 +1,6 @@
 package apigateway
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/aquasecurity/trivy/internal/testutil"
@@ -36,7 +35,7 @@ resource "aws_api_gateway_method" "example" {
 `,
 			expected: []v1.Method{
 				{
-					HTTPMethod:        String(http.MethodGet),
+					HTTPMethod:        String("GET"),
 					AuthorizationType: String("NONE"),
 					APIKeyRequired:    Bool(false),
 				},
@@ -64,7 +63,7 @@ resource "aws_api_gateway_method" "example" {
 `,
 			expected: []v1.Method{
 				{
-					HTTPMethod:        String(http.MethodGet),
+					HTTPMethod:        String("GET"),
 					AuthorizationType: String("NONE"),
 					APIKeyRequired:    Bool(true),
 				},
